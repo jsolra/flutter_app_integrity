@@ -44,7 +44,7 @@ class _IntegrityCheckPageState extends State<IntegrityCheckPage> {
 
   /// IntegrityConfig를 생성하고 IntegrityChecker를 초기화합니다.
   void _initChecker() {
-    final config = IntegrityConfig(
+    const config = IntegrityConfig(
       // Android: 유효한 APK 서명 SHA-256 해시 (Base64 인코딩)
       // 실제 앱에서는 본인의 서명 해시로 교체하세요.
       validSigningHashes: [
