@@ -33,6 +33,7 @@ class _IntegrityCheckPageState extends State<IntegrityCheckPage> {
   List<SecurityThreat> _threats = [];
   bool _isLoading = false;
   bool _hasVerified = false;
+  bool _hasThreat = false;
 
   @override
   void initState() {
@@ -58,38 +59,24 @@ class _IntegrityCheckPageState extends State<IntegrityCheckPage> {
       enableInstallSourceCheck: true,
       // 디버그 모드에서 검증 건너뛰기 (개발 중 편의를 위해 true 권장)
       skipInDebugMode: false,
-      // 위협 탐지 시 콜백
-      onThreatDetected: _handleThreatsDetected,
     );
 
     _checker = IntegrityChecker(config: config);
   }
 
-  /// onThreatDetected 콜백 핸들러.
-  /// 위협 탐지 시 자동으로 호출됩니다.
-  void _handleThreatsDetected(List<SecurityThreat> threats) {
-    debugPrint('=== 위협 탐지 콜백 호출 ===');
-    for (final threat in threats) {
-      debugPrint('  [${threat.type.name}] ${threat.message}');
-    }
-
-    // 위협이 탐지되면 보안 경고 다이얼로그를 표시합니다.
-    if (mounted) {
-      SecurityAlertDialog.showSecurityAlert(context, threats);
-    }
-  }
-
   /// 무결성 검증을 실행합니다.
+  /// verify()는 위협 탐지 시 true, 정상 시 false를 반환합니다.
   Future<void> _runVerification() async {
     setState(() {
       _isLoading = true;
     });
 
     try {
-      final threats = await _checker.verify();
+      final hasThreat = await _checker.verify();
       if (mounted) {
         setState(() {
-          _threats = threats;
+          _hasThreat = hasThreat;
+          _threats = _checker.detectedThreats;
           _isLoading = false;
           _hasVerified = true;
         });
@@ -135,13 +122,6 @@ class _IntegrityCheckPageState extends State<IntegrityCheckPage> {
               icon: const Icon(Icons.refresh),
               label: const Text('무결성 재검증'),
             ),
-            const SizedBox(height: 8),
-            // 보안 경고 다이얼로그 데모 버튼
-            OutlinedButton.icon(
-              onPressed: _threats.isEmpty ? null : _showAlertDemo,
-              icon: const Icon(Icons.warning_amber),
-              label: const Text('SecurityAlertDialog 데모'),
-            ),
           ],
         ),
       ),
@@ -161,7 +141,7 @@ class _IntegrityCheckPageState extends State<IntegrityCheckPage> {
       statusColor = Colors.grey;
       statusIcon = Icons.help_outline;
       statusText = '검증 대기';
-    } else if (_checker.hasThreat) {
+    } else if (_hasThreat) {
       statusColor = Colors.red;
       statusIcon = Icons.error;
       statusText = '위협 탐지됨 (${_threats.length}건)';
@@ -225,14 +205,6 @@ class _IntegrityCheckPageState extends State<IntegrityCheckPage> {
           ),
         );
       },
-    );
-  }
-
-  /// SecurityAlertDialog.showSecurityAlert 사용 예시를 보여줍니다.
-  void _showAlertDemo() {
-    SecurityAlertDialog.showSecurityAlert(
-      context,
-      _threats,
     );
   }
 }
