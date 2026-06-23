@@ -4,14 +4,16 @@
 
 Android에서는 APK 서명 인증서 SHA-256 해시 비교 및 설치 출처 검증을, iOS에서는 코드서명 무결성, 번들 ID 검증, 설치 출처 검증을 수행하여 위변조된 앱 실행을 탐지합니다.
 
+패키지는 **순수 검증 로직만** 담당하며, UI는 포함하지 않습니다. 위협 탐지 시 `true`, 정상 시 `false`를 반환하고, 호스트 앱에서 결과에 따른 UI 처리를 자유롭게 구현합니다.
+
 ## 주요 기능
 
 - **Android APK 서명 검증** — 서명 인증서 SHA-256 해시를 비교하여 재서명된 앱을 탐지
 - **iOS 코드서명 무결성 검증** — _CodeSignature 디렉토리 존재, 실행파일 존재, Mach-O 바이너리 암호화 상태 검사
 - **iOS 번들 ID 검증** — 현재 앱의 번들 ID가 유효 목록에 포함되는지 확인
 - **설치 출처 검증** — 공식 스토어(Google Play, App Store 등)에서 설치되었는지 확인
-- **위협 탐지 콜백** — 탐지된 위협을 콜백으로 전달하여 앱별 대응 가능
-- **기본 보안 경고 UI** — 내장 AlertDialog 제공, 커스텀 다이얼로그 빌더 지원
+- **Boolean 기반 결과** — 위협 탐지 시 `true`, 정상 시 `false` 반환
+- **상세 위협 정보 접근** — `detectedThreats` getter를 통해 위협 유형별 세부 정보 확인 가능
 - **디버그 모드 지원** — 개발 중에는 검증을 자동으로 건너뛰어 개발 편의성 제공
 
 ## 설치
@@ -30,7 +32,7 @@ dependencies:
 import 'package:app_integrity/app_integrity.dart';
 
 // 1. 설정 생성
-final config = IntegrityConfig(
+const config = IntegrityConfig(
   validSigningHashes: ['YOUR_SIGNING_HASH_BASE64'],
   validBundleIds: ['com.example.yourapp'],
 );
@@ -38,12 +40,17 @@ final config = IntegrityConfig(
 // 2. IntegrityChecker 생성
 final checker = IntegrityChecker(config: config);
 
-// 3. 검증 수행
-final threats = await checker.verify();
+// 3. 검증 수행 — 위협 탐지 시 true, 정상 시 false
+final hasThreat = await checker.verify();
 
-// 4. 결과 확인
-if (checker.hasThreat) {
-  print('위협 탐지: ${checker.detectedThreats}');
+// 4. 결과에 따른 처리 (UI 로직은 호스트 앱에서 구현)
+if (hasThreat) {
+  // 상세 위협 정보 접근
+  final threats = checker.detectedThreats;
+  for (final threat in threats) {
+    print('[${threat.type.name}] ${threat.message}');
+  }
+  // 앱 종료, 경고 다이얼로그 표시 등 자유롭게 처리
 }
 ```
 
@@ -59,8 +66,6 @@ if (checker.hasThreat) {
 | `validBundleIds` | `List<String>` | `[]` | iOS 유효 번들 ID 목록 |
 | `enableInstallSourceCheck` | `bool` | `false` | 설치 출처 검증 활성화 여부 |
 | `skipInDebugMode` | `bool` | `true` | 디버그 모드에서 검증 건너뛰기 |
-| `onThreatDetected` | `ThreatCallback?` | `null` | 위협 탐지 시 호출되는 콜백 |
-| `customDialogBuilder` | `CustomDialogBuilder?` | `null` | 커스텀 보안 경고 다이얼로그 빌더 |
 
 ### ThreatType
 
@@ -93,73 +98,64 @@ class SecurityThreat {
 ```dart
 final checker = IntegrityChecker(config: config);
 
-// 검증 수행 — 탐지된 SecurityThreat 목록 반환
-List<SecurityThreat> threats = await checker.verify();
+// 검증 수행 — 위협 탐지 시 true, 정상 시 false 반환
+bool hasThreat = await checker.verify();
 
 // 위협 탐지 여부 (bool)
 bool hasIssue = checker.hasThreat;
 
-// 탐지된 위협의 불변 목록
+// 탐지된 위협의 불변 목록 (상세 정보 필요 시)
 List<SecurityThreat> detected = checker.detectedThreats;
 ```
 
-### SecurityAlertDialog
+## 사용 예시
 
-보안 경고 다이얼로그를 표시하는 유틸리티 클래스입니다.
-
-```dart
-// 기본 보안 경고 다이얼로그 표시
-await SecurityAlertDialog.showSecurityAlert(context, threats);
-
-// 커스텀 다이얼로그 빌더 사용
-await SecurityAlertDialog.showSecurityAlert(
-  context,
-  threats,
-  customDialogBuilder: (context, threats) {
-    return YourCustomWidget(threats: threats);
-  },
-);
-```
-
-## 고급 사용법
-
-### 커스텀 콜백 등록
-
-위협 탐지 시 앱별 대응 로직을 실행할 수 있습니다:
+### 기본 사용법
 
 ```dart
-final config = IntegrityConfig(
-  validSigningHashes: ['YOUR_HASH'],
-  validBundleIds: ['com.example.yourapp'],
-  onThreatDetected: (threats) {
-    // 서버에 위협 정보 전송
-    reportToServer(threats);
-    // 또는 앱 종료
-    SystemNavigator.pop();
-  },
-);
-```
+import 'package:app_integrity/app_integrity.dart';
 
-### 커스텀 다이얼로그
+class _MyAppState extends State<MyApp> {
+  late final IntegrityChecker _checker;
 
-기본 AlertDialog 대신 커스텀 UI를 사용할 수 있습니다:
-
-```dart
-final config = IntegrityConfig(
-  validSigningHashes: ['YOUR_HASH'],
-  customDialogBuilder: (context, threats) {
-    return AlertDialog(
-      title: const Text('앱 위변조 감지'),
-      content: Text('${threats.length}건의 보안 위협이 발견되었습니다.'),
-      actions: [
-        TextButton(
-          onPressed: () => exit(0),
-          child: const Text('앱 종료'),
-        ),
-      ],
+  @override
+  void initState() {
+    super.initState();
+    _checker = IntegrityChecker(
+      config: const IntegrityConfig(
+        validSigningHashes: ['YOUR_HASH'],
+        validBundleIds: ['com.example.yourapp'],
+        skipInDebugMode: false,
+      ),
     );
-  },
-);
+    _checkIntegrity();
+  }
+
+  Future<void> _checkIntegrity() async {
+    final hasThreat = await _checker.verify();
+    if (hasThreat) {
+      // 호스트 앱에서 자유롭게 UI 처리
+      _showSecurityWarning(_checker.detectedThreats);
+    }
+  }
+
+  void _showSecurityWarning(List<SecurityThreat> threats) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('보안 경고'),
+        content: Text('${threats.length}건의 보안 위협이 발견되었습니다.'),
+        actions: [
+          TextButton(
+            onPressed: () => SystemNavigator.pop(),
+            child: const Text('종료'),
+          ),
+        ],
+      ),
+    );
+  }
+}
 ```
 
 ### 설치 출처 검증 활성화
@@ -167,13 +163,34 @@ final config = IntegrityConfig(
 기본적으로 비활성화되어 있으며, 필요 시 활성화합니다:
 
 ```dart
-final config = IntegrityConfig(
+const config = IntegrityConfig(
   validSigningHashes: ['YOUR_HASH'],
   enableInstallSourceCheck: true, // 설치 출처 검증 활성화
 );
 ```
 
 Android에서는 Google Play Store, Huawei AppGallery, Samsung Galaxy Store를 공식 스토어로 인식합니다. iOS에서는 App Store 영수증 파일 기반으로 판정합니다.
+
+### 위협 유형별 분기 처리
+
+```dart
+final hasThreat = await checker.verify();
+if (hasThreat) {
+  for (final threat in checker.detectedThreats) {
+    switch (threat.type) {
+      case ThreatType.signatureMismatch:
+        // 서명 불일치 → 즉시 앱 종료
+        exit(0);
+      case ThreatType.unofficialInstallSource:
+        // 비공식 설치 → 경고만 표시
+        showWarningSnackbar(threat.message);
+      default:
+        // 기타 위협 → 로깅
+        logThreat(threat);
+    }
+  }
+}
+```
 
 ## Android 설정
 
@@ -212,7 +229,7 @@ keytool -list -v -keystore your-keystore.jks -alias your-alias \
 Xcode에서 확인한 번들 ID를 `validBundleIds`에 추가합니다:
 
 ```dart
-final config = IntegrityConfig(
+const config = IntegrityConfig(
   validBundleIds: ['com.yourcompany.yourapp'],
 );
 ```
@@ -234,7 +251,7 @@ iOS에서는 다음 항목을 자동으로 검증합니다:
 개발 중 검증 로직을 테스트하려면 명시적으로 비활성화하세요:
 
 ```dart
-final config = IntegrityConfig(
+const config = IntegrityConfig(
   validSigningHashes: ['YOUR_HASH'],
   skipInDebugMode: false, // 디버그 모드에서도 검증 수행
 );
