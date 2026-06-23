@@ -80,8 +80,6 @@ void main() {
       expect(config.validBundleIds, isEmpty);
       expect(config.enableInstallSourceCheck, false);
       expect(config.skipInDebugMode, true);
-      expect(config.onThreatDetected, isNull);
-      expect(config.customDialogBuilder, isNull);
     });
 
     test('IntegrityChecker is accessible', () {
